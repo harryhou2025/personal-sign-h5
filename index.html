@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>个人签名留档工具</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --card:#fff; --line:#e3e6ea; --text:#1f2733; --muted:#6b7683;
+    --primary:#2f6fed; --primary-weak:#e8f0ff; --red:#c0392b; --ink:#1a3f8f;
+    --radius:14px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;}
+  #app{max-width:480px;margin:0 auto;min-height:100vh;padding:14px 14px 90px;}
+  header h1{font-size:19px;margin:6px 0 2px;}
+  .disclaimer{font-size:11px;color:var(--muted);line-height:1.5;background:#fff8e6;
+    border:1px solid #f0e0b0;border-radius:10px;padding:8px 10px;margin:8px 0 14px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px;margin-bottom:14px;}
+  .hidden{display:none !important;}
+  button{font-family:inherit;font-size:15px;border:none;border-radius:10px;cursor:pointer;}
+  .btn-primary{background:var(--primary);color:#fff;padding:13px;width:100%;font-weight:600;}
+  .btn-ghost{background:var(--primary-weak);color:var(--primary);padding:11px;width:100%;}
+  .btn-line{background:#fff;border:1px solid var(--line);color:var(--text);padding:11px;width:100%;}
+  .btn-sm{padding:8px 12px;font-size:13px;border:1px solid var(--line);background:#fff;color:var(--text);border-radius:9px;}
+  .upload-zone{border:2px dashed #c6cdd6;border-radius:var(--radius);padding:36px 18px;text-align:center;color:var(--muted);}
+  .upload-zone p{margin:6px 0;}
+  .file-meta{font-size:13px;color:var(--muted);word-break:break-all;margin-bottom:10px;}
+  /* stage */
+  .stage{position:relative;width:100%;background:#eceef1;border-radius:12px;overflow:hidden;
+    touch-action:none;user-select:none;}
+  .stage-media{width:100%;}
+  .stage-media canvas,.stage-media img{display:block;width:100%;height:auto;}
+  .el{position:absolute;cursor:grab;touch-action:none;}
+  .el.selected{outline:2px dashed var(--primary);outline-offset:2px;}
+  .el img{display:block;width:100%;height:auto;pointer-events:none;}
+  .el-tools{display:flex;gap:8px;justify-content:center;margin:10px 0;flex-wrap:wrap;}
+  /* 签名面板 */
+  #signPad{width:100%;height:150px;background:#fff;border:1px solid var(--line);border-radius:12px;touch-action:none;}
+  .pad-actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
+  .pad-actions .btn-sm{flex:1;min-width:72px;}
+  .stamps{display:flex;gap:10px;margin:12px 0;}
+  .stamp-chip{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;
+    border:1px solid var(--line);border-radius:12px;padding:10px 6px;background:#fff;}
+  .stamp-chip canvas{width:56px;height:56px;}
+  .stamp-chip span{font-size:12px;color:var(--muted);}
+  label.field{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px;}
+  input[type=text],textarea{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;
+    font-size:15px;font-family:inherit;background:#fff;}
+  .kv{font-size:13px;line-height:1.9;word-break:break-all;}
+  .kv b{color:var(--muted);font-weight:normal;display:inline-block;min-width:72px;}
+  .hash{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--muted);
+    background:var(--bg);padding:6px 8px;border-radius:8px;word-break:break-all;}
+  .record-item{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:#fff;}
+  .record-item .t{font-weight:600;font-size:14px;}
+  .record-item .m{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.7;}
+  .bottom-bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);
+    padding:10px 14px;max-width:480px;margin:0 auto;display:flex;gap:10px;}
+  .bottom-bar .btn-primary{flex:1;}
+  .nav-row{display:flex;gap:10px;margin-bottom:14px;}
+  .nav-row .btn-line{flex:1;}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>个人签名留档工具</h1>
+    <div class="disclaimer">本工具仅用于内部工作记录留档，不具备《电子签名法》可靠电子签名效力，正式法律文件请使用合规电子签平台。文件与记录仅保存在本机浏览器，不上传服务器。</div>
+  </header>
+
+  <!-- 视图：上传 -->
+  <section id="view-upload">
+    <div class="card">
+      <div class="upload-zone" id="dropZone">
+        <p style="font-size:16px;color:var(--text);font-weight:600;">点击选择要签名的文件</p>
+        <p>支持 PDF（叠加到第 1 页）、JPG / PNG 图片</p>
+        <p style="font-size:12px;">Word 等格式暂不支持</p>
+        <input type="file" id="fileInput" accept="application/pdf,image/jpeg,image/png" hidden>
+      </div>
+    </div>
+    <div class="nav-row">
+      <button class="btn-line" id="btnRecords">我的签署记录</button>
+    </div>
+  </section>
+
+  <!-- 视图：签署 -->
+  <section id="view-sign" hidden>
+    <div class="card">
+      <div class="file-meta" id="fileMeta"></div>
+      <div class="stage" id="stage">
+        <div class="stage-media" id="stageMedia"></div>
+      </div>
+      <div class="el-tools hidden" id="elTools">
+        <button class="btn-sm" data-act="out">－ 缩小</button>
+        <button class="btn-sm" data-act="del">删除</button>
+        <button class="btn-sm" data-act="in">＋ 放大</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <strong style="font-size:15px;">① 手写签名</strong>
+      <canvas id="signPad"></canvas>
+      <div class="pad-actions">
+        <button class="btn-sm" id="btnUndo">撤销一笔</button>
+        <button class="btn-sm" id="btnClearPad">清空</button>
+        <button class="btn-sm" id="btnUseTemplate">用已存笔迹</button>
+        <button class="btn-sm" id="btnAddSign">添加到文件</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <strong style="font-size:15px;">② 盖印章（可选）</strong>
+      <div class="stamps" id="stampRow"></div>
+    </div>
+
+    <div class="card">
+      <strong style="font-size:15px;">③ 签署信息</strong>
+      <label class="field">姓名（手填，非实名）</label>
+      <input type="text" id="fName" placeholder="如：王教练">
+      <label class="field">备注（可选）</label>
+      <textarea id="fNote" rows="2" placeholder="如：家长知情确认 / 已阅备案"></textarea>
+      <div class="file-meta" style="margin-top:8px;">签署时间（自动）：<span id="fTime"></span></div>
+    </div>
+  </section>
+
+  <!-- 视图：完成 -->
+  <section id="view-done" hidden>
+    <div class="card">
+      <strong style="font-size:15px;">导出完成</strong>
+      <div class="kv" style="margin-top:10px;">
+        <div><b>导出文件</b><span id="doneName"></span></div>
+        <div><b>签署时间</b><span id="doneTime"></span></div>
+        <div><b>姓名</b><span id="doneName2"></span></div>
+      </div>
+      <div style="margin-top:10px;font-size:13px;color:var(--muted);">原文件 SHA-256</div>
+      <div class="hash" id="hashOrig"></div>
+      <div style="margin-top:8px;font-size:13px;color:var(--muted);">导出文件 SHA-256</div>
+      <div class="hash" id="hashExport"></div>
+      <div style="margin-top:14px;display:flex;gap:10px;">
+        <button class="btn-ghost" id="btnDownload" style="flex:1;">保存导出文件</button>
+        <button class="btn-line" id="btnAgain" style="flex:1;">再签一份</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 视图：记录 -->
+  <section id="view-records" hidden>
+    <div class="nav-row"><button class="btn-line" id="btnBackFromRecords">返回</button></div>
+    <div id="recordList"></div>
+  </section>
+
+  <div class="bottom-bar hidden" id="signBar">
+    <button class="btn-line" id="btnReupload" style="flex:0 0 96px;">重传</button>
+    <button class="btn-primary" id="btnExport">导出留档</button>
+  </div>
+</div>
+
+<script src="./vendor/pdf.min.js"></script>
+<script src="./vendor/pdf-lib.min.js"></script>
+<script>
+/* ============ 全局状态 ============ */
+const state = {
+  kind: null,            // 'pdf' | 'image'
+  fileName: '',
+  bytes: null,           // ArrayBuffer 原文件
+  image: null,           // HTMLImageElement（图片）
+  pdfPage: null,         // pdf.js page
+  elements: [],          // {id,type,img,nw,nh,x,y,w}  x,y,w 为相对舞台比例
+  selectedId: null,
+  strokes: [],           // 手写笔画
+  current: null,
+};
+let exportBlob = null, exportName = '', origHash = '', exportHash = '';
+
+const $ = s => document.querySelector(s);
+const stage = $('#stage'), layer = $('#stageMedia');
+
+/* ============ 视图切换 ============ */
+function show(view){
+  document.querySelectorAll('#app section').forEach(s=>{ s.hidden=true; s.classList.add('hidden'); });
+  const cur=$('#'+view); cur.hidden=false; cur.classList.remove('hidden');
+  $('#signBar').classList.toggle('hidden', view!=='view-sign');
+  window.scrollTo(0,0);
+}
+
+/* ============ 工具：时间 / 哈希 / uuid ============ */
+function nowStr(){ const d=new Date(), p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
+function uuid(){ return 'r'+Date.now()+Math.random().toString(16).slice(2,8); }
+async function sha256(buf){
+  const h = await crypto.subtle.digest('SHA-256', buf);
+  return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+/* ============ 上传 ============ */
+$('#dropZone').addEventListener('click', ()=>$('#fileInput').click());
+$('#fileInput').addEventListener('change', async e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const buf = await f.arrayBuffer();
+  state.bytes = buf; state.fileName = f.name;
+  const ext = f.name.split('.').pop().toLowerCase();
+  if(f.type==='application/pdf' || ext==='pdf') state.kind='pdf';
+  else if(['jpg','jpeg','png'].includes(ext) || /^image\//.test(f.type)) state.kind='image';
+  else { alert('暂不支持该格式，请用 PDF 或 JPG/PNG 图片'); return; }
+  await loadFile();
+  $('#fTime').textContent = nowStr();
+  show('view-sign');
+});
+
+async function loadFile(){
+  $('#fileMeta').textContent = `${state.fileName}（${state.kind==='pdf'?'PDF·叠加第1页':'图片'}）`;
+  state.elements = []; state.selectedId=null;
+  clearElLayer();
+  if(state.kind==='image'){
+    const img = new Image();
+    img.onload = ()=>{ state.image=img; layer.innerHTML=''; layer.appendChild(img); afterRender(); };
+    img.src = URL.createObjectURL(new Blob([state.bytes]));
+  } else {
+    if(!window.pdfjsLib){ alert('当前环境暂不支持直接打开 PDF：请把文档截图或转为图片后上传，或在普通浏览器中打开本工具。'); return; }
+    pdfjsLib.GlobalWorkerOptions.workerSrc = './vendor/pdf.worker.min.js';
+    const pdf = await pdfjsLib.getDocument({data: state.bytes.slice(0)}).promise;
+    state.pdfPage = await pdf.getPage(1);
+    const vp = state.pdfPage.getViewport({scale:1.6});
+    const c = document.createElement('canvas');
+    c.width=vp.width; c.height=vp.height;
+    await state.pdfPage.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;
+    layer.innerHTML=''; layer.appendChild(c); afterRender();
+  }
+}
+
+function afterRender(){ /* 元素指针事件在 renderElement 内绑定 */ sizePad(); }
+
+/* ============ 元素层 ============ */
+function clearElLayer(){ document.querySelectorAll('#stage .el').forEach(n=>n.remove()); }
+
+function addElement({type, img, nw, nh}){
+  const n = state.elements.length;
+  const el = { id:uuid(), type, img, nw, nh,
+    x:0.08+(n%2)*0.28, y:0.2+n*0.18, w:0.3 };
+  state.elements.push(el); renderElement(el); selectEl(el.id);
+}
+
+function renderElement(el){
+  let node = document.getElementById(el.id);
+  if(!node){
+    node = document.createElement('div');
+    node.id = el.id; node.className='el';
+    node.innerHTML='<img draggable="false">';
+    stage.appendChild(node);
+    node.addEventListener('pointerdown', ev=>startDrag(ev, el.id));
+  }
+  const stageW = stage.clientWidth;
+  const hRatio = el.nh/el.nw;
+  const wPx = el.w*stageW;
+  node.style.left = (el.x*100)+'%';
+  node.style.top = (el.y*100)+'%';
+  node.style.width = wPx+'px';
+  node.querySelector('img').src = el.img;
+}
+
+function refreshAll(){ clearElLayer(); state.elements.forEach(renderElement); syncSelTool(); }
+
+function selectEl(id){ state.selectedId=id;
+  document.querySelectorAll('#stage .el').forEach(n=>n.classList.toggle('selected', n.id===id));
+  syncSelTool();
+}
+function syncSelTool(){ $('#elTools').classList.toggle('hidden', !state.selectedId); }
+
+/* 拖动（百分比坐标） */
+let drag=null;
+function startDrag(ev, id){
+  const el = state.elements.find(e=>e.id===id); if(!el) return;
+  selectEl(id);
+  const r = stage.getBoundingClientRect();
+  drag={id, px:ev.clientX, py:ev.clientY, ox:el.x, oy:el.y, rw:r.width, rh:r.height};
+  ev.preventDefault();
+}
+stage.addEventListener('pointermove', ev=>{
+  if(!drag) return;
+  const el=state.elements.find(e=>e.id===drag.id); if(!el) return;
+  const dx=(ev.clientX-drag.px)/drag.rw, dy=(ev.clientY-drag.py)/drag.rh;
+  el.x=Math.min(Math.max(drag.ox+dx,0),1-el.w);
+  const hRel=el.w*el.nh/el.nw;
+  el.y=Math.min(Math.max(drag.oy+dy,0),1-hRel);
+  renderElement(el);
+});
+stage.addEventListener('pointerup', ()=>drag=null);
+stage.addEventListener('pointercancel', ()=>drag=null);
+
+/* 元素工具：放大/缩小/删除 */
+$('#elTools').addEventListener('click', e=>{
+  const btn=e.target.closest('[data-act]'); if(!btn) return;
+  const el=state.elements.find(x=>x.id===state.selectedId); if(!el) return;
+  const act=btn.dataset.act;
+  if(act==='del'){ state.elements=state.elements.filter(x=>x.id!==el.id); state.selectedId=null; }
+  else { const f=act==='in'?1.12:0.88; el.w=Math.min(Math.max(el.w*f,0.05),0.9); }
+  refreshAll();
+});
+
+/* ============ 手写签名板 ============ */
+const pad=$('#signPad'), pctx=pad.getContext('2d');
+function sizePad(){
+  const r=pad.getBoundingClientRect();
+  pad.width=r.width; pad.height=150;
+  pctx.lineWidth=3.2; pctx.lineCap='round'; pctx.lineJoin='round'; pctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink');
+  redrawPad();
+}
+function redrawPad(){
+  pctx.clearRect(0,0,pad.width,pad.height);
+  state.strokes.forEach(s=>drawStroke(s));
+  if(state.current) drawStroke(state.current);
+}
+function drawStroke(s){
+  pctx.beginPath();
+  s.pts.forEach((p,i)=>{
+    if(i===0) pctx.moveTo(p.x,p.y);
+    else { const prev=s.pts[i-1]; const mx=(prev.x+p.x)/2, my=(prev.y+p.y)/2;
+      pctx.quadraticCurveTo(prev.x,prev.y,mx,my); }
+  });
+  pctx.stroke();
+}
+let pdown=false;
+pad.addEventListener('pointerdown',e=>{
+  pdown=true; const r=pad.getBoundingClientRect();
+  state.current={pts:[{x:e.clientX-r.left,y:e.clientY-r.top}]};
+  pad.setPointerCapture(e.pointerId); redrawPad();
+});
+pad.addEventListener('pointermove',e=>{
+  if(!pdown||!state.current) return;
+  const r=pad.getBoundingClientRect();
+  state.current.pts.push({x:e.clientX-r.left,y:e.clientY-r.top}); redrawPad();
+});
+const endPad=()=>{ if(pdown&&state.current){state.strokes.push(state.current);state.current=null;} pdown=false; redrawPad(); };
+pad.addEventListener('pointerup',endPad); pad.addEventListener('pointercancel',endPad);
+
+$('#btnUndo').addEventListener('click',()=>{state.strokes.pop();redrawPad();});
+$('#btnClearPad').addEventListener('click',()=>{state.strokes=[];state.current=null;redrawPad();});
+
+/* 把笔迹裁边 + 追加时间戳，导出为 PNG dataURL */
+function padToStamp(){
+  if(!state.strokes.length) return null;
+  let minX=1e9,minY=1e9,maxX=-1,maxY=-1;
+  state.strokes.forEach(s=>s.pts.forEach(p=>{
+    minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minY=Math.min(minY,p.y);maxY=Math.max(maxY,p.y);
+  }));
+  const padP=14, timeH=26;
+  const w=Math.ceil(maxX-minX+padP*2), h=Math.ceil(maxY-minY+padP*2+timeH);
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const g=c.getContext('2d');
+  g.lineWidth=3.2;g.lineCap='round';g.lineJoin='round';g.strokeStyle='#1a3f8f';
+  state.strokes.forEach(s=>{
+    g.beginPath();
+    s.pts.forEach((p,i)=>{
+      const x=p.x-minX+padP, y=p.y-minY+padP;
+      if(i===0)g.moveTo(x,y);else{const q=s.pts[i-1];const mx=(q.x-minX+padP+x)/2,my=(q.y-minY+padP+y)/2;g.quadraticCurveTo(q.x-minX+padP,q.y-minY+padP,mx,my);}
+    });
+    g.stroke();
+  });
+  g.fillStyle='#555';g.font='12px sans-serif';g.textBaseline='top';
+  g.fillText($('#fTime').textContent||nowStr(), padP, maxY-minY+padP*2+6);
+  return {img:c.toDataURL('image/png'),nw:w,nh:h};
+}
+
+$('#btnAddSign').addEventListener('click',()=>{
+  const s=padToStamp(); if(!s){alert('请先手写签名');return;}
+  localStorage.setItem('sign_template',s.img);
+  addElement({type:'sign',img:s.img,nw:s.nw,nh:s.nh});
+});
+$('#btnUseTemplate').addEventListener('click',()=>{
+  const t=localStorage.getItem('sign_template'); if(!t){alert('还没有保存过笔迹');return;}
+  const im=new Image(); im.onload=()=>addElement({type:'sign',img:t,nw:im.width,nh:im.height});
+  im.src=t;
+});
+
+/* ============ 预置印章 ============ */
+function makeStamp(text, sub){
+  const S=240, c=document.createElement('canvas'); c.width=S;c.height=S;
+  const g=c.getContext('2d'); const red='#c0392b';
+  g.strokeStyle=red; g.lineWidth=9;
+  g.beginPath(); g.arc(S/2,S/2,S/2-12,0,Math.PI*2); g.stroke();
+  g.fillStyle=red; g.textAlign='center'; g.textBaseline='middle';
+  if(sub){
+    g.font='bold 52px sans-serif'; g.fillText(text,S/2,S/2-30);
+    g.font='34px sans-serif'; g.fillText(sub,S/2,S/2+34);
+  } else {
+    g.font='bold 72px sans-serif'; g.fillText(text,S/2,S/2);
+  }
+  return {img:c.toDataURL('image/png'),canvas:c,nw:S,nh:S,label:sub?text+sub:text};
+}
+const stamps=[makeStamp('已阅'),makeStamp('确认'),makeStamp('本人','签署')];
+stamps.forEach(st=>{
+  const chip=document.createElement('button'); chip.className='stamp-chip';
+  chip.innerHTML=`<canvas width="112" height="112"></canvas><span>${st.label}</span>`;
+  chip.querySelector('canvas').getContext('2d').drawImage(st.canvas,0,0,112,112);
+  chip.addEventListener('click',()=>addElement({type:'stamp',img:st.img,nw:st.nw,nh:st.nh}));
+  $('#stampRow').appendChild(chip);
+});
+
+/* ============ 导出 ============ */
+$('#btnExport').addEventListener('click', async ()=>{
+  if(!state.elements.length){alert('请先添加签名或印章');return;}
+  origHash = await sha256(state.bytes);
+  try{
+    if(state.kind==='image') exportBlob=await exportImage();
+    else exportBlob=await exportPdf();
+  }catch(err){ console.error(err); alert('导出失败：'+err.message); return; }
+  exportHash = await sha256(await exportBlob.arrayBuffer());
+  const ext=state.kind==='pdf'?'pdf':'png';
+  const base=state.fileName.replace(/\.[^.]+$/,'');
+  exportName=`${base}_已签.${ext}`;
+  $('#doneName').textContent=exportName;
+  $('#doneTime').textContent=$('#fTime').textContent;
+  $('#doneName2').textContent=$('#fName').textContent||'（未填）';
+  $('#hashOrig').textContent=origHash;
+  $('#hashExport').textContent=exportHash;
+  saveRecord();
+  show('view-done');
+});
+
+async function exportImage(){
+  const img=state.image;
+  const c=document.createElement('canvas'); c.width=img.naturalWidth; c.height=img.naturalHeight;
+  const g=c.getContext('2d'); g.drawImage(img,0,0);
+  state.elements.forEach(el=>{
+    const wPx=el.w*c.width, hPx=wPx*el.nh/el.nw;
+    const im=new Image(); im.src=el.img;
+    g.drawImage(im, el.x*c.width, el.y*c.height, wPx, hPx);
+  });
+  return await new Promise(res=>c.toBlob(b=>res(b),'image/png'));
+}
+
+function dataUrlToBytes(u){
+  const b=atob(u.split(',')[1]);
+  const arr=new Uint8Array(b.length);
+  for(let i=0;i<b.length;i++) arr[i]=b.charCodeAt(i);
+  return arr;
+}
+
+async function exportPdf(){
+  if(!window.PDFLib) throw new Error('PDF 组件未加载（需联网）');
+  const {PDFDocument}=window.PDFLib;
+  const doc=await PDFDocument.load(state.bytes.slice(0));
+  const page=doc.getPage(0);
+  const {width:pw,height:ph}=page.getSize();
+  for(const el of state.elements){
+    const im=await doc.embedPng(dataUrlToBytes(el.img));
+    const wPx=el.w*pw, hPx=wPx*el.nh/el.nw;
+    const x=el.x*pw, yBottom=ph-(el.y*ph+hPx);
+    page.drawImage(im,{x,y:yBottom,width:wPx,height:hPx});
+  }
+  const bytes=await doc.save();
+  return new Blob([bytes],{type:'application/pdf'});
+}
+
+$('#btnDownload').addEventListener('click',()=>{
+  if(!exportBlob) return;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(exportBlob); a.download=exportName; a.click();
+});
+$('#btnAgain').addEventListener('click',()=>location.reload());
+$('#btnReupload').addEventListener('click',()=>location.reload());
+
+/* ============ 记录 ============ */
+function saveRecord(){
+  const list=JSON.parse(localStorage.getItem('sign_records')||'[]');
+  list.unshift({id:uuid(),fileName:state.fileName,time:$('#fTime').textContent,
+    name:$('#fName').value,note:$('#fNote').value,origHash,exportHash,exportName});
+  localStorage.setItem('sign_records',JSON.stringify(list.slice(0,50)));
+}
+$('#btnRecords').addEventListener('click',()=>{renderRecords();show('view-records');});
+$('#btnBackFromRecords').addEventListener('click',()=>show('view-upload'));
+function renderRecords(){
+  const list=JSON.parse(localStorage.getItem('sign_records')||'[]');
+  const box=$('#recordList'); box.innerHTML='';
+  if(!list.length){box.innerHTML='<div class="card" style="color:var(--muted);text-align:center;">暂无记录</div>';return;}
+  list.forEach(r=>{
+    const d=document.createElement('div'); d.className='record-item';
+    d.innerHTML=`<div class="t">${r.exportName||r.fileName}</div>
+      <div class="m">时间：${r.time}<br>姓名：${r.name||'（未填）'}${r.note?'<br>备注：'+r.note:''}<br>原文件哈希：${r.origHash.slice(0,16)}…<br>导出哈希：${r.exportHash.slice(0,16)}…</div>`;
+    box.appendChild(d);
+  });
+}
+
+/* 初始化 */
+window.addEventListener('resize',sizePad);
+sizePad();
+</script>
+</body>
+</html>
